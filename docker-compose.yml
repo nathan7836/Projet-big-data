@@ -1,0 +1,252 @@
+services:
+  # ==================== SOURCES ====================
+  mysql:
+    build:
+      context: ./docker/mysql
+      dockerfile: Dockerfile
+    container_name: mysql-source
+    command: --local-infile=1
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: insurance_plans
+      MYSQL_USER: spark
+      MYSQL_PASSWORD: sparkpass
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - bigdata
+
+  postgres-source:
+    build:
+      context: ./docker/postgres
+      dockerfile: Dockerfile
+    container_name: postgres-source
+    environment:
+      POSTGRES_DB: insurance_costs
+      POSTGRES_USER: spark
+      POSTGRES_PASSWORD: sparkpass
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spark -d insurance_costs"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - bigdata
+
+  # ==================== STOCKAGE ====================
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bigdata
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      mc mb myminio/datalake --ignore-existing;
+      mc mb myminio/datalake/raw --ignore-existing;
+      mc mb myminio/datalake/silver --ignore-existing;
+      echo 'MinIO buckets created';
+      "
+    networks:
+      - bigdata
+
+  # ==================== HIVE METASTORE ====================
+  postgres-hive:
+    image: postgres:13
+    container_name: postgres-hive
+    environment:
+      POSTGRES_DB: metastore
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hivepass
+      POSTGRES_HOST_AUTH_METHOD: md5
+      POSTGRES_INITDB_ARGS: "--auth-host=md5 --auth-local=md5"
+    volumes:
+      - postgres_hive_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive -d metastore"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - bigdata
+
+  hive-metastore:
+    build:
+      context: ./docker/hive
+      dockerfile: Dockerfile
+    container_name: hive-metastore
+    depends_on:
+      postgres-hive:
+        condition: service_healthy
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: postgres
+      SERVICE_OPTS: >-
+        -Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver
+        -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres-hive:5432/metastore
+        -Djavax.jdo.option.ConnectionUserName=hive
+        -Djavax.jdo.option.ConnectionPassword=hivepass
+    ports:
+      - "9083:9083"
+    networks:
+      - bigdata
+
+  # ==================== SPARK ====================
+  spark-master:
+    build:
+      context: ./docker/spark
+      dockerfile: Dockerfile
+    container_name: spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    volumes:
+      - ./spark/jobs:/opt/spark-jobs
+    networks:
+      - bigdata
+
+  spark-worker:
+    build:
+      context: ./docker/spark
+      dockerfile: Dockerfile
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    environment:
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+    volumes:
+      - ./spark/jobs:/opt/spark-jobs
+    networks:
+      - bigdata
+
+  # ==================== GOLD DB ====================
+  postgres-gold:
+    image: postgres:15
+    container_name: postgres-gold
+    environment:
+      POSTGRES_DB: datamarts
+      POSTGRES_USER: api
+      POSTGRES_PASSWORD: apipass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_gold_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U api -d datamarts"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - bigdata
+
+  # ==================== AIRFLOW ====================
+  airflow:
+    image: apache/airflow:2.8.1-python3.10
+    container_name: airflow
+    user: root
+    depends_on:
+      - postgres-gold
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__WEBSERVER__SECRET_KEY: 'bigdata-secret-key'
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      bash -c "
+        apt-get update && apt-get install -y docker.io > /dev/null 2>&1 || true &&
+        airflow db migrate &&
+        airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true &&
+        airflow webserver -D &&
+        airflow scheduler
+      "
+    networks:
+      - bigdata
+
+  # ==================== API ====================
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: api
+    depends_on:
+      postgres-gold:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://api:apipass@postgres-gold:5432/datamarts
+      JWT_SECRET: super-secret-jwt-key-for-bigdata-project
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app
+    networks:
+      - bigdata
+
+  # ==================== VISUALIZATION ====================
+  visualization:
+    build:
+      context: ./visualization
+      dockerfile: Dockerfile
+    container_name: visualization
+    depends_on:
+      postgres-gold:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://api:apipass@postgres-gold:5432/datamarts
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./visualization:/app
+    networks:
+      - bigdata
+
+volumes:
+  postgres_hive_data:
+  postgres_gold_data:
+  minio_data:
+
+networks:
+  bigdata:
+    driver: bridge

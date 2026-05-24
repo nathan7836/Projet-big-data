@@ -1,0 +1,12 @@
+.DS_Store
+*.pyc
+__pycache__/
+spark/jars/*.jar
+docker/spark/jars/*.jar
+data/csv/
+docker/mysql/init/plans.csv
+docker/postgres/init/costs.csv
+airflow/logs/
+airflow/plugins/
+*.log
+.env

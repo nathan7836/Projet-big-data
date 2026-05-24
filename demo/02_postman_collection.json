@@ -1,0 +1,443 @@
+{
+  "info": {
+    "name": "US Health Insurance - Big Data API",
+    "description": "Collection Postman pour la demo video du projet Big Data.\n\n**Workflow :**\n1. Lancer 'Health Check' pour verifier l'API\n2. Lancer 'Login (admin)' pour obtenir le token JWT\n3. Le token est automatiquement sauvegarde dans la variable {{token}}\n4. Tester les endpoints des datamarts\n\n**Identifiants :**\n- admin / admin123 (role admin)\n- analyst / analyst123 (role analyst)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "0 - Health & Auth",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Verifie que l'API et la base de donnees sont operationnelles."
+          }
+        },
+        {
+          "name": "Login (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.access_token) {",
+                  "    pm.collectionVariables.set('token', jsonData.access_token);",
+                  "    console.log('Token saved!');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "username", "value": "admin" },
+                { "key": "password", "value": "admin123" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Authentification JWT. Le token est automatiquement sauvegarde dans la variable {{token}}."
+          }
+        },
+        {
+          "name": "Login (analyst)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.access_token) {",
+                  "    pm.collectionVariables.set('token', jsonData.access_token);",
+                  "    console.log('Token saved!');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "username", "value": "analyst" },
+                { "key": "password", "value": "analyst123" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login avec le role analyst (permissions limitees en production)."
+          }
+        },
+        {
+          "name": "Login ECHEC (mauvais mot de passe)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "username", "value": "admin" },
+                { "key": "password", "value": "wrongpassword" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Demontre le refus d'authentification avec un mauvais mot de passe (401 Unauthorized)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1 - DM1 Accessibilite Financiere",
+      "item": [
+        {
+          "name": "Affordability - Page 1 (tous)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/datamarts/affordability?page=1&page_size=10",
+              "host": ["{{base_url}}"],
+              "path": ["datamarts", "affordability"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "10" }
+              ]
+            },
+            "description": "Premiere page du datamart d'accessibilite financiere, 10 resultats."
+          }
+        },
+        {
+          "name": "Affordability - Filtre par etat (CA)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/datamarts/affordability?state=CA&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["datamarts", "affordability"],
+              "query": [
+                { "key": "state", "value": "CA" },
+                { "key": "page_size", "value": "20" }
+              ]
+            },
+            "description": "Filtre les resultats pour la Californie uniquement."
+          }
+        },
+        {
+          "name": "Affordability - Filtre par metal (Gold)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/datamarts/affordability?metal_level=Gold&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["datamarts", "affordability"],
+              "query": [
+                { "key": "metal_level", "value": "Gold" },
+                { "key": "page_size", "value": "20" }
+              ]
+            },
+            "description": "Filtre uniquement les plans Gold."
+          }
+        },
+        {
+          "name": "Affordability - Filtre combine (NY + Silver)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/datamarts/affordability?state=NY&metal_level=Silver",
+              "host": ["{{base_url}}"],
+              "path": ["datamarts", "affordability"],
+              "query": [
+                { "key": "state", "value": "NY" },
+                { "key": "metal_level", "value": "Silver" }
+              ]
+            },
+            "description": "Filtre combine : New York + plans Silver."
+          }
+        },
+        {
+          "name": "Affordability - Stats agregees",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/datamarts/affordability/stats",
+              "host": ["{{base_url}}"],
+              "path": ["datamarts", "affordability", "stats"]
+            },
+            "description": "Statistiques agregees par niveau metal : franchise moy, OOP max, min/max."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 - DM2 Structure du Marche",
+      "item": [
+        {
+          "name": "Market Structure - Page 1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/datamarts/market-structure?page=1&page_size=10",
+              "host": ["{{base_url}}"],
+              "path": ["datamarts", "market-structure"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "10" }
+              ]
+            },
+            "description": "Structure du marche, premiers resultats tries par nombre de plans."
+          }
+        },
+        {
+          "name": "Market Structure - Filtre PPO en Texas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/datamarts/market-structure?state=TX&network_type=PPO&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["datamarts", "market-structure"],
+              "query": [
+                { "key": "state", "value": "TX" },
+                { "key": "network_type", "value": "PPO" },
+                { "key": "page_size", "value": "20" }
+              ]
+            },
+            "description": "Plans PPO au Texas uniquement."
+          }
+        },
+        {
+          "name": "Market Structure - Repartition par reseau",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/datamarts/market-structure/by-network",
+              "host": ["{{base_url}}"],
+              "path": ["datamarts", "market-structure", "by-network"]
+            },
+            "description": "Distribution nationale des types de reseau (HMO, PPO, EPO, POS)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - DM3 Competitivite",
+      "item": [
+        {
+          "name": "Competitiveness - Page 1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/datamarts/competitiveness?page=1&page_size=10",
+              "host": ["{{base_url}}"],
+              "path": ["datamarts", "competitiveness"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "10" }
+              ]
+            },
+            "description": "Competitivite des plans, premiers resultats."
+          }
+        },
+        {
+          "name": "Competitiveness - Filtre Gold + HMO",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/datamarts/competitiveness?metal_level=Gold&network_type=HMO&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["datamarts", "competitiveness"],
+              "query": [
+                { "key": "metal_level", "value": "Gold" },
+                { "key": "network_type", "value": "HMO" },
+                { "key": "page_size", "value": "20" }
+              ]
+            },
+            "description": "Plans Gold HMO : copays, coassurance, exclusions."
+          }
+        },
+        {
+          "name": "Competitiveness - Copay Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/datamarts/competitiveness/copay-summary",
+              "host": ["{{base_url}}"],
+              "path": ["datamarts", "competitiveness", "copay-summary"]
+            },
+            "description": "Resume des copays moyens par niveau metal (generaliste, specialiste, urgences, medicaments)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 - Tests de securite",
+      "item": [
+        {
+          "name": "SANS TOKEN - doit retourner 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/datamarts/affordability",
+              "host": ["{{base_url}}"],
+              "path": ["datamarts", "affordability"]
+            },
+            "description": "Appel SANS token JWT. Doit retourner 401 Unauthorized."
+          }
+        },
+        {
+          "name": "FAUX TOKEN - doit retourner 401",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer faux.token.invalide"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/datamarts/affordability",
+              "host": ["{{base_url}}"],
+              "path": ["datamarts", "affordability"]
+            },
+            "description": "Appel avec un faux token. Doit retourner 401 Unauthorized."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 - Documentation Swagger",
+      "item": [
+        {
+          "name": "OpenAPI Schema (JSON)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/openapi.json",
+              "host": ["{{base_url}}"],
+              "path": ["openapi.json"]
+            },
+            "description": "Schema OpenAPI complet de l'API. La doc Swagger est aussi visible sur http://localhost:8000/docs"
+          }
+        }
+      ]
+    }
+  ]
+}
